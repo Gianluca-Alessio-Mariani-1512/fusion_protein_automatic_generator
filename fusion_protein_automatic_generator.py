@@ -1,5 +1,6 @@
 import requests
 from Bio.Seq import Seq
+import argparse
 
 def get_input_from_vcf(data_file):
     found_row = None
@@ -271,57 +272,68 @@ def check_correct_frame(N_term_codingseq, C_term_codingseq, seq2check):
 
     return codingseq_frames[first_element], first_element
 
-data_file = "data/22-C-004462_v1_22-C-004462_RNA_v1_Non-Filtered_2025-02-20_03_33_25.vcf"
+def main():
+    parser = argparse.ArgumentParser(description="Path of the vcf input file")
+    parser.add_argument('-p', '--path', type=str, required=False, 
+                        help="Path of the vcf input file")
+    
+    args = parser.parse_args()
+    
+    # data_file = "data/22-C-004462_v1_22-C-004462_RNA_v1_Non-Filtered_2025-02-20_03_33_25.vcf"
+    data_file = args.path
 
-vcf_output = get_input_from_vcf(data_file=data_file)
-assembly = str(vcf_output[0])
+    vcf_output = get_input_from_vcf(data_file=data_file)
+    assembly = str(vcf_output[0])
 
-genename1 = vcf_output[1][0][0]
-chrnum1=int(vcf_output[1][0][1])
-break_end1 = int(vcf_output[1][0][2])
+    genename1 = vcf_output[1][0][0]
+    chrnum1=int(vcf_output[1][0][1])
+    break_end1 = int(vcf_output[1][0][2])
 
-genename2 = vcf_output[1][1][0]
-chrnum2=int(vcf_output[1][1][1])
-break_end2 = int(vcf_output[1][1][2])
+    genename2 = vcf_output[1][1][0]
+    chrnum2=int(vcf_output[1][1][1])
+    break_end2 = int(vcf_output[1][1][2])
 
-genes1 = get_exons_from_ucsc(chrnum=chrnum1, start=break_end1 - 1, end=break_end1 + 1, assembly=assembly, genename=genename1)["name"]
-genes1_entry = get_exons_from_ucsc(chrnum=chrnum1, start=break_end1 - 1, end=break_end1 + 1, assembly=assembly, genename=genename1)
+    genes1 = get_exons_from_ucsc(chrnum=chrnum1, start=break_end1 - 1, end=break_end1 + 1, assembly=assembly, genename=genename1)["name"]
+    genes1_entry = get_exons_from_ucsc(chrnum=chrnum1, start=break_end1 - 1, end=break_end1 + 1, assembly=assembly, genename=genename1)
 
-genes2 = get_exons_from_ucsc(chrnum=chrnum2, start=break_end2 - 1, end=break_end2 + 1, assembly=assembly, genename=genename2)["name"]
-genes2_entry = get_exons_from_ucsc(chrnum=chrnum2, start=break_end2 - 1, end=break_end2 + 1, assembly=assembly, genename=genename2)
+    genes2 = get_exons_from_ucsc(chrnum=chrnum2, start=break_end2 - 1, end=break_end2 + 1, assembly=assembly, genename=genename2)["name"]
+    genes2_entry = get_exons_from_ucsc(chrnum=chrnum2, start=break_end2 - 1, end=break_end2 + 1, assembly=assembly, genename=genename2)
 
-gene_id_base1 = genes1.split('.')[0]
-gene_id_base2 = genes2.split('.')[0]
+    gene_id_base1 = genes1.split('.')[0]
+    gene_id_base2 = genes2.split('.')[0]
 
-check_for_MANE_zhan(assembly=assembly, gene_id=gene_id_base1, genename=genename1)
-check_for_MANE_zhan(assembly=assembly, gene_id=gene_id_base2, genename=genename2)
+    check_for_MANE_zhan(assembly=assembly, gene_id=gene_id_base1, genename=genename1)
+    check_for_MANE_zhan(assembly=assembly, gene_id=gene_id_base2, genename=genename2)
 
-codingseq1 = get_exon_sequence(gene_UCSC_entry=genes1_entry, break_end=break_end1, term_type="N", strand=genes1_entry['strand'])
-codingseq2 = get_exon_sequence(gene_UCSC_entry=genes2_entry, break_end=break_end2, term_type="C", strand=genes2_entry['strand'])
+    codingseq1 = get_exon_sequence(gene_UCSC_entry=genes1_entry, break_end=break_end1, term_type="N", strand=genes1_entry['strand'])
+    codingseq2 = get_exon_sequence(gene_UCSC_entry=genes2_entry, break_end=break_end2, term_type="C", strand=genes2_entry['strand'])
 
-codingseq2, first_element = check_correct_frame(N_term_codingseq=codingseq1, C_term_codingseq=codingseq2, seq2check=get_seq2check(gene_UCSC_entry=genes2_entry))
+    codingseq2, first_element = check_correct_frame(N_term_codingseq=codingseq1, C_term_codingseq=codingseq2, seq2check=get_seq2check(gene_UCSC_entry=genes2_entry))
 
-rem1 = len(codingseq1) % 3
-rem2 = len(codingseq2) % 3
+    rem1 = len(codingseq1) % 3
+    rem2 = len(codingseq2) % 3
 
-codingseq1_adj = codingseq1[:rem1]
-final_dnaseq1 = Seq(codingseq1)
-codingseq2_adj = f"{codingseq1[-rem1:]}{codingseq2}"
-final_dnaseq2 = Seq(codingseq2_adj)
-final_dnaseq_tot = Seq(f"{codingseq1}{codingseq2}")
+    codingseq1_adj = codingseq1[:rem1]
+    final_dnaseq1 = Seq(codingseq1)
+    codingseq2_adj = f"{codingseq1[-rem1:]}{codingseq2}"
+    final_dnaseq2 = Seq(codingseq2_adj)
+    final_dnaseq_tot = Seq(f"{codingseq1}{codingseq2}")
 
-protein1 = final_dnaseq1.translate()
-protein2 = final_dnaseq2.translate()
-protein_tot = final_dnaseq_tot.translate()
+    protein1 = final_dnaseq1.translate()
+    protein2 = final_dnaseq2.translate()
+    protein_tot = final_dnaseq_tot.translate()
 
-print(f"\nCoding sequence for protein 1: \n{codingseq1}")
-print(f"\nCoding sequence for protein 2: \n{codingseq2}")
-print(f"\nAdditional bases at the end of the 1st coding sequence: {rem1}")
-print(f"Additional bases at the beginning of the 2nd coding sequence: {rem2}")
-print(f"Necessary frameshift to maintain correct frame for 2nd protein: {first_element}")
-print(f"\nTranslated sequence for protein 1: \n{protein1}")
-print(f"\nTranslated sequence for protein 2: \n{protein2}")
-print(f"\nFinal fusion protein sequence: \n{protein_tot}")
+    print(f"\nCoding sequence for protein 1: \n{codingseq1}")
+    print(f"\nCoding sequence for protein 2: \n{codingseq2}")
+    print(f"\nAdditional bases at the end of the 1st coding sequence: {rem1}")
+    print(f"Additional bases at the beginning of the 2nd coding sequence: {rem2}")
+    print(f"Necessary frameshift to maintain correct frame for 2nd protein: {first_element}")
+    print(f"\nTranslated sequence for protein 1: \n{protein1}")
+    print(f"\nTranslated sequence for protein 2: \n{protein2}")
+    print(f"\nFinal fusion protein sequence: \n{protein_tot}")
+
+if __name__ == "__main__":
+    main()
 
 
 
