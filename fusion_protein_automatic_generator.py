@@ -1,6 +1,7 @@
 import requests
 from Bio.Seq import Seq
 import argparse
+import sys
 
 def get_input_from_vcf(data_file):
     """
@@ -150,6 +151,7 @@ def get_prot_seq2check(gene_UCSC_entry):
         return None
 
 def get_coding_sequence(gene_UCSC_entry, break_end, term_type, exons_Nterm=None, exons_Cterm=None):
+
     # Estrai e converti i dati
     chrnum = gene_UCSC_entry["chrom"]
     strand = gene_UCSC_entry["strand"]
@@ -168,29 +170,44 @@ def get_coding_sequence(gene_UCSC_entry, break_end, term_type, exons_Nterm=None,
     exons_tot_dict = {exons_total[i]:i+1 for i in range(len(exons_total))}
     # print(exons_tot_dict)
 
-    # Calcola le posizioni di inizio e fine degli esoni
-    exons = []
-    for start, size in zip(chrom_starts, block_sizes):
-        exon_start = start + gene_UCSC_entry['chromStart']
-        exon_end = exon_start + size
-        if term_type == "N" and strand == "+":
-            if exon_end <= break_end +1:  # Solo esoni che terminano prima del breakpoint
-                exons.append((exon_start, exon_end))
-        if term_type == "C" and strand == "+":
-            if exon_start >= break_end -1:  # Solo esoni che terminano prima del breakpoint
-                exons.append((exon_start, exon_end))
-        if term_type == "N" and strand == "-":
-            if exon_start >= break_end -1:  # Solo esoni che terminano prima del breakpoint
-                exons.append((exon_start, exon_end))
-        if term_type == "C" and strand == "-":
-            if exon_end <= break_end +1:  # Solo esoni che terminano prima del breakpoint
-                exons.append((exon_start, exon_end))
+    if exons_Nterm is None and term_type == "N":
+        exons = []
+        for start, size in zip(chrom_starts, block_sizes):
+            exon_start = start + gene_UCSC_entry['chromStart']
+            exon_end = exon_start + size
+            if term_type == "N" and strand == "+":
+                if exon_end <= break_end +1:  # Solo esoni che terminano prima del breakpoint
+                    exons.append((exon_start, exon_end))
+            if term_type == "N" and strand == "-":
+                if exon_start >= break_end -1:  # Solo esoni che terminano prima del breakpoint
+                    exons.append((exon_start, exon_end))
 
-    new_exon_dict = {}
+        new_exon_dict = {}
 
-    for i in exons:
-        if i in exons_tot_dict:
-            new_exon_dict[i] = exons_tot_dict[i]
+        for i in exons:
+            if i in exons_tot_dict:
+                new_exon_dict[i] = exons_tot_dict[i]
+
+    elif exons_Cterm is None and term_type == "C":
+        exons = []
+        for start, size in zip(chrom_starts, block_sizes):
+            exon_start = start + gene_UCSC_entry['chromStart']
+            exon_end = exon_start + size
+            if term_type == "C" and strand == "+":
+                if exon_start >= break_end -1:  # Solo esoni che terminano prima del breakpoint
+                    exons.append((exon_start, exon_end))
+            if term_type == "C" and strand == "-":
+                if exon_end <= break_end +1:  # Solo esoni che terminano prima del breakpoint
+                    exons.append((exon_start, exon_end))
+
+        new_exon_dict = {}
+
+        for i in exons:
+            if i in exons_tot_dict:
+                new_exon_dict[i] = exons_tot_dict[i]
+    
+    else:
+        new_exon_dict = exons_tot_dict
 
     # print(new_exon_dict)
     new_exon_dict_inv = {value: key for key, value in new_exon_dict.items()}
@@ -213,6 +230,10 @@ def get_coding_sequence(gene_UCSC_entry, break_end, term_type, exons_Nterm=None,
             # print("no_exons_dict:", nuovo_dizionario)
             new_exon_dict_inv = nuovo_dizionario
 
+    max_exon = max(new_exon_dict_inv, key=new_exon_dict_inv.get)
+    min_exon = min(new_exon_dict_inv, key=new_exon_dict_inv.get)
+    range_string = f"{max_exon}-{min_exon}"
+
     ordered_exons = [new_exon_dict_inv[key] for key in sorted(new_exon_dict_inv.keys())]
 
     # print(exons)
@@ -227,7 +248,7 @@ def get_coding_sequence(gene_UCSC_entry, break_end, term_type, exons_Nterm=None,
             exon_seq = get_sequence(chrnum=chrnum, assembly="hg19", start=ordered_exons[i][0], end=ordered_exons[i][1])
             codingseq_fragments.append(str(exon_seq))
         coding_seq = "".join(codingseq_fragments)
-        return coding_seq
+        return coding_seq, range_string
     
     if term_type == "C" and strand == "+":
         last_exon = ordered_exons.pop(-1)
@@ -238,7 +259,7 @@ def get_coding_sequence(gene_UCSC_entry, break_end, term_type, exons_Nterm=None,
         trimmed_end_exon = trim_stop_cod(dna_seq=last_exon_seq, seq2check=get_prot_seq2check(gene_UCSC_entry=gene_UCSC_entry))
         codingseq_fragments.append(str(trimmed_end_exon))
         coding_seq = "".join(codingseq_fragments)
-        return coding_seq
+        return coding_seq, range_string
     
     if term_type == "N" and strand == "-":
         first_exon = ordered_exons.pop(0)
@@ -255,7 +276,7 @@ def get_coding_sequence(gene_UCSC_entry, break_end, term_type, exons_Nterm=None,
             reverse_complement_seq = complement_seq[::-1]
             codingseq_fragments.append(str(reverse_complement_seq))
         coding_seq = "".join(codingseq_fragments)
-        return coding_seq
+        return coding_seq, range_string
     
     if term_type == "C" and strand == "-":
         last_exon = ordered_exons.pop(-1)
@@ -272,7 +293,7 @@ def get_coding_sequence(gene_UCSC_entry, break_end, term_type, exons_Nterm=None,
         trimmed_end_exon = trim_stop_cod(dna_seq=reverse_complement_seq, seq2check=get_prot_seq2check(gene_UCSC_entry=gene_UCSC_entry))
         codingseq_fragments.append(str(trimmed_end_exon))
         coding_seq = "".join(codingseq_fragments)
-        return coding_seq
+        return coding_seq, range_string
 
 def get_sequence(chrnum, assembly, start, end):
     url = f"http://api.genome.ucsc.edu/getData/sequence?track=knownGene;genome={assembly};chrom={chrnum};start={start};end={end}"
@@ -353,21 +374,24 @@ def check_correct_frame(N_term_dna_seq, C_term_dna_seq, seq2check):
     return codingseq_frames[first_element], first_element
 
 def main():
-    parser = argparse.ArgumentParser(description="Path of the vcf input file")
+    parser = argparse.ArgumentParser(description="Automatic script to get a fusion protein sequence from a vcf file")
     parser.add_argument('-p', '--path', type=str, required=False, 
                         help="Path of the vcf input file")
     
     parser.add_argument('-bN', '--break_Nterm', type=int, required=False, 
-                        help="Manually override the Nterminal protein breakpoint")
+                        help="Manually override the Nterminal protein breakpoint, Nterminal protein ends in specified base, specified base included")
     
     parser.add_argument('-bC', '--break_Cterm', type=int, required=False, 
-                        help="Manually override the Cterminal protein breakpoint")
+                        help="Manually override the Cterminal protein breakpoint, Cterminal protein starts in specified base, specified base included")
+    
+    parser.add_argument('-e', '--exon_count', action='store_true', required=False, 
+                        help="Enable to only get the two proteins exon count and nothing else")
     
     parser.add_argument('-eN', '--exons_Nterm', type=int, required=False, 
-                        help="Manually override the Nterminal protein breakpoint")
+                        help="Manually override the Nterminal exon count, take all exons from first to the specified exon, specified exon included")
     
     parser.add_argument('-eC', '--exons_Cterm', type=int, required=False, 
-                        help="Manually override the Cterminal protein breakpoint")
+                        help="Manually override the Cterminal exon count, take all exons from specified to the last exon, specified exon included")
     
     parser.add_argument('-o', '--output', type=str, required=False, 
                         help="Manually override the output name")
@@ -377,23 +401,39 @@ def main():
     # data_file = "data/22-C-004462_v1_22-C-004462_RNA_v1_Non-Filtered_2025-02-20_03_33_25.vcf"
     data_file = args.path
 
+    if args.exons_Nterm:
+        namestring_exons_Nterm = f"_Nto_Exon{str(args.exons_Nterm)}"
+    else:
+        namestring_exons_Nterm = ""
+
+    if args.exons_Cterm:
+        namestring_exons_Cterm = f"_Cfrom_Exon{str(args.exons_Cterm)}"
+    else:
+        namestring_exons_Cterm = ""
+
     vcf_output = get_input_from_vcf(data_file=data_file)
     assembly = str(vcf_output[0])
     variant_found = str(vcf_output[2])
 
     genenameN = vcf_output[1][0][0]
     chrnumN=int(vcf_output[1][0][1])
+
     if args.break_Nterm:
         break_endN = args.break_Nterm
+        namestring_break_endN = f"_breakN{str(args.break_Nterm)}"
     else:
         break_endN = int(vcf_output[1][0][2])
+        namestring_break_endN = ""
 
     genenameC = vcf_output[1][1][0]
     chrnumC=int(vcf_output[1][1][1])
+
     if args.break_Cterm:
         break_endC = args.break_Cterm
+        namestring_break_endC = f"_breakC{str(args.break_Cterm)}"
     else:
         break_endC = int(vcf_output[1][1][2])
+        namestring_break_endC = ""
 
     genesN_entry = get_UCSC_entry(chrnum=chrnumN, start=break_endN - 1, end=break_endN + 1, assembly=assembly, genename=genenameN)
     # print(genesN_entry)
@@ -406,8 +446,15 @@ def main():
     check_for_MANE_zhan(assembly=assembly, gene_id=gene_id_baseN, genename=genenameN)
     check_for_MANE_zhan(assembly=assembly, gene_id=gene_id_baseC, genename=genenameC)
 
-    codingseq1 = get_coding_sequence(gene_UCSC_entry=genesN_entry, break_end=break_endN, term_type="N", exons_Nterm=args.exons_Nterm)
-    codingseq2 = get_coding_sequence(gene_UCSC_entry=genesC_entry, break_end=break_endC, term_type="C", exons_Cterm=args.exons_Cterm)
+    codingseq1, rangeN = get_coding_sequence(gene_UCSC_entry=genesN_entry, break_end=break_endN, term_type="N", exons_Nterm=args.exons_Nterm)
+    codingseq2, rangeC = get_coding_sequence(gene_UCSC_entry=genesC_entry, break_end=break_endC, term_type="C", exons_Cterm=args.exons_Cterm)
+
+    if args.exon_count:
+        print(f"The {genenameN} gene exon count is:", genesN_entry["blockCount"])
+        print(f"The {genenameC} gene exon count is:", genesC_entry["blockCount"])
+        print(f"With the provided vcf input file the selected {genenameN} exon in the final fusion protein will be:", rangeN)
+        print(f"With the provided vcf input file the selected {genenameC} exon in the final fusion protein will be:", rangeC)
+        sys.exit(0)
 
     rem1 = len(codingseq1) % 3
     rem2 = len(codingseq2) % 3
@@ -425,9 +472,9 @@ def main():
     protein_tot = final_dnaseq_tot.translate()
 
     if args.output:
-        outputname = f"{variant_found}_{args.output}___FusionProteinSequence.txt"
+        outputname = f"{args.output}.txt"
     else:
-        outputname = f"{variant_found}___FusionProteinSequence.txt"
+        outputname = f"{variant_found}{namestring_exons_Nterm}{namestring_exons_Cterm}{namestring_break_endN}{namestring_break_endC}___FusionProteinSequence.txt"
 
     with open(outputname, 'w') as file:
         file.write("Output file initialized\n")
