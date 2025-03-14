@@ -232,7 +232,9 @@ def get_coding_sequence(gene_UCSC_entry, break_end, term_type, exons_Nterm=None,
 
     max_exon = max(new_exon_dict_inv, key=new_exon_dict_inv.get)
     min_exon = min(new_exon_dict_inv, key=new_exon_dict_inv.get)
-    range_string = f"{max_exon}-{min_exon}"
+    max_exon_fin = max(min_exon, max_exon)
+    min_exon_fin = min(min_exon, max_exon)
+    range_string = f"{min_exon_fin}-{max_exon_fin}"
 
     ordered_exons = [new_exon_dict_inv[key] for key in sorted(new_exon_dict_inv.keys())]
 
@@ -374,32 +376,46 @@ def check_correct_frame(N_term_dna_seq, C_term_dna_seq, seq2check):
     return codingseq_frames[first_element], first_element
 
 def main():
-    parser = argparse.ArgumentParser(description="Automatic script to get a fusion protein sequence from a vcf file")
+    parser = argparse.ArgumentParser(description="Automatic script to get a fusion protein sequence from a vcf file, or manually if you have all the necessary informations included in the flags below")
     parser.add_argument('-p', '--path', type=str, required=False, 
                         help="Path of the vcf input file")
     
     parser.add_argument('-bN', '--break_Nterm', type=int, required=False, 
-                        help="Manually override the Nterminal protein breakpoint, Nterminal protein ends in specified base, specified base included")
+                        help="Manually override the Nterminal protein breakpoint, Nterminal protein ends in specified base, specified base included (e.g. 25678544)")
     
     parser.add_argument('-bC', '--break_Cterm', type=int, required=False, 
-                        help="Manually override the Cterminal protein breakpoint, Cterminal protein starts in specified base, specified base included")
+                        help="Manually override the Cterminal protein breakpoint, Cterminal protein starts in specified base, specified base included (e.g. 17668454)")
     
     parser.add_argument('-e', '--exon_count', action='store_true', required=False, 
-                        help="Enable to only get the two proteins exon count and nothing else")
+                        help="Enable to only get the two proteins exon count and nothing else (no sequence output or output file, only exon count), can be used with -eN or -eC to check which exons have been selected")
     
     parser.add_argument('-eN', '--exons_Nterm', type=int, required=False, 
-                        help="Manually override the Nterminal exon count, take all exons from first to the specified exon, specified exon included")
+                        help="Manually override the Nterminal exon count, take all exons from first to the specified exon, specified exon included (e.g. 12 means exons for Nterm protein will be first-12)")
     
     parser.add_argument('-eC', '--exons_Cterm', type=int, required=False, 
-                        help="Manually override the Cterminal exon count, take all exons from specified to the last exon, specified exon included")
+                        help="Manually override the Cterminal exon count, take all exons from specified to the last exon, specified exon included (e.g. 17 means exons for Cterm protein will be 17-last)")
     
     parser.add_argument('-o', '--output', type=str, required=False, 
-                        help="Manually override the output name")
+                        help="Manually override the output name (e.g. output will generate a file named output.txt)")
+    
+    parser.add_argument('-a', '--assembly', type=str, required=False, 
+                        help="Manually override the assembly type (e.g. hg19)")
+    
+    parser.add_argument('-gN', '--genenameN', type=str, required=False, 
+                        help="Manually override the gene name in Nterm (e.g. CLTC)")
+    
+    parser.add_argument('-gC', '--genenameC', type=str, required=False, 
+                        help="Manually override the gene name in Cterm (e.g. ALK)")
+    
+    parser.add_argument('-cN', '--chrnumN', type=str, required=False, 
+                        help="Manually override the gene name in Nterm (e.g. 2 means chromosome number 2)")
+    
+    parser.add_argument('-cC', '--chrnumC', type=str, required=False, 
+                        help="Manually override the gene name in Cterm (e.g. 17 means chromosome number 17)")
     
     args = parser.parse_args()
     
     # data_file = "data/22-C-004462_v1_22-C-004462_RNA_v1_Non-Filtered_2025-02-20_03_33_25.vcf"
-    data_file = args.path
 
     if args.exons_Nterm:
         namestring_exons_Nterm = f"_Nto_Exon{str(args.exons_Nterm)}"
@@ -411,12 +427,27 @@ def main():
     else:
         namestring_exons_Cterm = ""
 
-    vcf_output = get_input_from_vcf(data_file=data_file)
-    assembly = str(vcf_output[0])
-    variant_found = str(vcf_output[2])
+    if args.path:
+        data_file = args.path
+        vcf_output = get_input_from_vcf(data_file=data_file)
+        variant_found = str(vcf_output[2])
+    else:
+        variant_found = f"{args.genenameN}_{args.genenameC}_Manual"
+    
+    if args.assembly:
+        assembly = args.assembly
+    else:
+        assembly = str(vcf_output[0])
 
-    genenameN = vcf_output[1][0][0]
-    chrnumN=int(vcf_output[1][0][1])
+    if args.genenameN:
+        genenameN = args.genenameN
+    else:
+        genenameN = vcf_output[1][0][0]
+    
+    if args.chrnumN:
+        chrnumN = args.chrnumN
+    else:
+        chrnumN=int(vcf_output[1][0][1])
 
     if args.break_Nterm:
         break_endN = args.break_Nterm
@@ -425,8 +456,15 @@ def main():
         break_endN = int(vcf_output[1][0][2])
         namestring_break_endN = ""
 
-    genenameC = vcf_output[1][1][0]
-    chrnumC=int(vcf_output[1][1][1])
+    if args.genenameC:
+        genenameC = args.genenameC
+    else:
+        genenameC = vcf_output[1][1][0]
+
+    if args.chrnumC:
+        chrnumC = args.chrnumC
+    else:
+        chrnumC=int(vcf_output[1][1][1])
 
     if args.break_Cterm:
         break_endC = args.break_Cterm
